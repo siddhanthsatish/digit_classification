@@ -1,0 +1,33 @@
+{
+  "description": "Bounding box height and width distributions across splits",
+  "splits": {
+    "train": {
+      "height": {
+        "mean": 33.86,
+        "median": 29.0,
+        "p5": 14.0,
+        "p95": 68.0
+      },
+      "width": {
+        "mean": 16.65,
+        "median": 14.0,
+        "p5": 6.0,
+        "p95": 36.0
+      }
+    },
+    "test": {
+      "height": {
+        "mean": 27.96,
+        "median": 24.0,
+        "p5": 15.0,
+        "p95": 54.0
+      },
+      "width": {
+        "mean": 15.52,
+        "median": 13.0,
+        "p5": 7.0,
+        "p95": 31.0
+      }
+    }
+  }
+}

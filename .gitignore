@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# Virtual / conda environments
+venv/
+env/
+.env
+
+# Project outputs
+outputs/checkpoints/
+outputs/results/
+outputs/graded_images/
+outputs/**/*.log
+
+# Data
+/data/
+data/cache/
+
+# Model weights
+*.pth
+*.pkl
+
+# Compiled report artifacts (source in docs/final_report/ is tracked)
+final_report.zip
+docs/final_report/*.pdf
+docs/final_report/*.aux
+docs/final_report/*.log
+docs/final_report/*.out
+docs/final_report/*.toc
+docs/final_report/*.synctex.gz
+
+# Jupyter
+.ipynb_checkpoints/
+
+# IDE
+.vscode/
+.idea/
+
+# macOS
+.DS_Store
+
+# Large binaries / build artifacts
+Miniconda3-*.sh
+*.log
+
+# Scratch / debug scripts
+*copy*.py
+best_config.txt
+plan.md
+run.md

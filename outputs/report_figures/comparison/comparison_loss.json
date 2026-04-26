@@ -1,0 +1,15 @@
+{
+  "description": "Train and val loss curves for each model",
+  "models": {
+    "custom": {
+      "train_loss_final": 0.0711,
+      "val_loss_final": 0.0666,
+      "epochs": 30
+    },
+    "vgg16": {
+      "train_loss_final": 0.0391,
+      "val_loss_final": 0.0548,
+      "epochs": 20
+    }
+  }
+}

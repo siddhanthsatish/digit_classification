@@ -1,0 +1,53 @@
+{
+  "description": "Per-class digit crop counts across splits",
+  "splits": {
+    "train": [
+      4948,
+      13861,
+      10585,
+      8497,
+      7458,
+      6882,
+      5727,
+      5595,
+      5045,
+      4659
+    ],
+    "test": [
+      1744,
+      5099,
+      4149,
+      2882,
+      2523,
+      2384,
+      1977,
+      2019,
+      1660,
+      1595
+    ]
+  },
+  "classes": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9
+  ],
+  "most_frequent": {
+    "train": 1,
+    "test": 1
+  },
+  "least_frequent": {
+    "train": 9,
+    "test": 9
+  },
+  "imbalance_ratio": {
+    "train": 2.975,
+    "test": 3.197
+  }
+}

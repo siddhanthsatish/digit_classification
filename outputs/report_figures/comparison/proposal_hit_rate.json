@@ -1,0 +1,75 @@
+{
+  "iou_threshold": 0.3,
+  "recall": {
+    "hits": 24385,
+    "total": 26032,
+    "rate": 0.9367
+  },
+  "precision": {
+    "hits": 122040,
+    "total": 809812,
+    "rate": 0.1507
+  },
+  "full_coverage": {
+    "images": 11704,
+    "total": 13068,
+    "rate": 0.8956
+  },
+  "by_seq_len": {
+    "1": {
+      "recall": 0.9702,
+      "precision": 0.1296,
+      "full_coverage": 0.9702,
+      "gt_hit": 2409,
+      "gt_total": 2483,
+      "prop_hit": 15856,
+      "prop_total": 122366,
+      "img_all_hit": 2409,
+      "img_total": 2483
+    },
+    "2": {
+      "recall": 0.9468,
+      "precision": 0.1423,
+      "full_coverage": 0.9076,
+      "gt_hit": 15823,
+      "gt_total": 16712,
+      "prop_hit": 76414,
+      "prop_total": 537010,
+      "img_all_hit": 7584,
+      "img_total": 8356
+    },
+    "3": {
+      "recall": 0.8991,
+      "precision": 0.1971,
+      "full_coverage": 0.7674,
+      "gt_hit": 5613,
+      "gt_total": 6243,
+      "prop_hit": 26970,
+      "prop_total": 136868,
+      "img_all_hit": 1597,
+      "img_total": 2081
+    },
+    "4": {
+      "recall": 0.9127,
+      "precision": 0.2093,
+      "full_coverage": 0.774,
+      "gt_hit": 533,
+      "gt_total": 584,
+      "prop_hit": 2767,
+      "prop_total": 13218,
+      "img_all_hit": 113,
+      "img_total": 146
+    },
+    "5": {
+      "recall": 0.7,
+      "precision": 0.0943,
+      "full_coverage": 0.5,
+      "gt_hit": 7,
+      "gt_total": 10,
+      "prop_hit": 33,
+      "prop_total": 350,
+      "img_all_hit": 1,
+      "img_total": 2
+    }
+  }
+}

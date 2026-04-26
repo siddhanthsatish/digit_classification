@@ -1,0 +1,557 @@
+\documentclass[10pt,twocolumn]{article}
+
+\usepackage[margin=0.75in]{geometry}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{hyperref}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{float}
+\usepackage{enumitem}
+\usepackage{parskip}
+\usepackage[numbers]{natbib}
+
+\setlength{\columnsep}{0.25in}
+\captionsetup{font=small, labelfont=bf}
+
+% ── Figure root ───────────────────────────────────────────────────────────────
+% For Overleaf: figures sit at zip root alongside report.tex
+% For local build from docs/final_report/: use {../../outputs/} instead
+\graphicspath{{./}}
+
+\title{\textbf{Digit Detection and Recognition Using\\
+Convolutional Neural Networks}\\
+\large GT CS 6476 --- Computer Vision Final Project}
+
+\author{Siddhanth Satish}
+\date{}
+
+\begin{document}
+\maketitle
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Introduction}
+% ─────────────────────────────────────────────────────────────────────────────
+
+Recognising sequences of digits in natural scene images is a fundamental
+computer vision problem with applications in autonomous navigation, postal
+automation, and document digitisation.
+Unlike isolated digit classification on clean crops, scene-level digit
+detection must contend with scale variation, arbitrary orientation, uneven
+illumination, background clutter, and sensor noise---all simultaneously.
+
+This project implements a complete two-stage pipeline:
+(1) a region-proposal stage that generates candidate bounding boxes using
+Maximally Stable Extremal Regions (MSER)~\cite{matas2004robust} and a
+sliding-window image pyramid, and
+(2) a classification stage that labels each proposal as one of ten digit
+classes or background using a Convolutional Neural Network (CNN).
+Two classifiers are evaluated: a custom CNN trained from scratch and a
+fine-tuned VGG16~\cite{simonyan2015vgg} initialised with ImageNet weights.
+Post-processing applies per-class Non-Maximum Suppression (NMS) and
+left-to-right sorting to assemble the final digit sequence.
+
+All models are trained on the Street View House Numbers (SVHN) Format~1
+dataset~\cite{netzer2011svhn}, which provides 73,257 training and 26,032
+test digit crops extracted from Google Street View imagery.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Related Work}
+% ─────────────────────────────────────────────────────────────────────────────
+
+\paragraph{CNN-based digit recognition.}
+LeCun et al.~\cite{lecun1998gradient} introduced LeNet, demonstrating that
+convolutional architectures could learn spatial hierarchies of features
+directly from pixel data.
+Goodfellow et al.~\cite{goodfellow2014multidigit} extended this to
+multi-digit sequence recognition in a single forward pass, achieving
+near-human accuracy on SVHN.
+More recently, He et al.~\cite{he2016resnet} showed that residual
+connections allow very deep networks to be trained stably, further pushing
+classification accuracy.
+
+\paragraph{Transfer learning.}
+Simonyan and Zisserman~\cite{simonyan2015vgg} demonstrated that deep
+uniform architectures (VGG) pre-trained on ImageNet transfer effectively
+to new visual tasks.
+Yosinski et al.~\cite{yosinski2014transferable} provided theoretical and
+empirical evidence that lower convolutional layers learn general-purpose
+edge and texture detectors reusable across domains.
+
+\paragraph{Region proposals.}
+Matas et al.~\cite{matas2004robust} introduced MSER as a method for
+detecting stable connected components across a range of intensity
+thresholds, making it well-suited for text-like regions.
+Viola and Jones~\cite{viola2004robust} popularised the sliding-window
+paradigm with image pyramids for scale-invariant detection.
+Ren et al.~\cite{ren2015fasterrcnn} later unified region proposal and
+classification in Faster R-CNN; however, the assignment prohibits
+one-stage detectors, motivating the classical two-stage approach used here.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Method}
+% ─────────────────────────────────────────────────────────────────────────────
+
+\subsection{Preprocessing}
+
+Every input image first undergoes \textbf{polarity normalisation}: if the
+median pixel brightness exceeds 127 the image is inverted, ensuring that
+digit strokes are always brighter than the background.
+This stabilises MSER detection, which relies on consistent contrast polarity.
+
+The image is then denoised with a $3\times3$ Gaussian blur to suppress
+high-frequency sensor noise.
+Lighting normalisation is applied via Contrast Limited Adaptive Histogram
+Equalisation (CLAHE)~\cite{zuiderveld1994clahe} on the L channel of the
+LAB colour space (\texttt{clipLimit}$=2.0$,
+\texttt{tileGridSize}$=8\times8$).
+Operating in LAB isolates luminance from chrominance, preventing colour
+distortion while improving local contrast.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{report_figures/comparison/pipeline_steps.png}
+  \caption{Full preprocessing pipeline for one correctly detected image
+           (top) and one failure case (bottom).
+           Steps: original $\to$ polarity normalisation $\to$ Gaussian blur
+           $\to$ CLAHE $\to$ MSER proposals $\to$ deduplication $\to$
+           classifier hits $\to$ DBSCAN clustering $\to$ final detections.}
+  \label{fig:pipeline}
+\end{figure}
+
+\subsection{Region Proposals}
+
+\paragraph{MSER.}
+MSER detects connected pixel regions that remain stable across a wide range
+of intensity thresholds.
+Digit strokes exhibit this property because they maintain consistent
+contrast against their background.
+MSER is run on both the greyscale image and its inverse to capture both
+dark-on-light and light-on-dark digits.
+Regions with area outside $[50, 3000]$ pixels or aspect ratio outside
+$[0.2, 5.0]$ are discarded as unlikely to contain a single digit.
+
+\paragraph{Sliding window + image pyramid.}
+A $32\times32$ window slides across the image in steps of 24 pixels.
+The image is repeatedly downscaled by a factor of 0.9 until either
+dimension falls below 32 pixels, producing a multi-scale pyramid.
+All proposals are mapped back to original-image coordinates by dividing by
+the cumulative scale factor.
+By default, only MSER proposals are used at inference
+(\texttt{use\_sliding}$=$\texttt{false} in \texttt{config.json}); the
+sliding window can be enabled for higher recall at the cost of
+significantly more proposals.
+Near-duplicate proposals (IoU $> 0.8$) are removed before classification.
+
+\subsection{Classification}
+
+\paragraph{11-class formulation.}
+Both models output 11 classes: digits 0--9 (indices 0--9) and a background
+class (index 10).
+The background class is trained on synthetic crops: between-digit patches
+sampled from SVHN scene images (50\%), random noise patches (25\%), and
+linear gradient patches (25\%).
+The ratio of background to digit samples is controlled by
+\texttt{bg\_ratio}$=1.0$ in \texttt{config.json}, producing a balanced
+dataset with one background crop per digit crop.
+At inference, any proposal classified as background is discarded before NMS.
+
+\paragraph{CustomCNN.}
+The custom architecture consists of three convolutional blocks, each
+containing two $3\times3$ Conv--BatchNorm--ReLU layers followed by
+$2\times2$ MaxPool and Dropout2d(0.25).
+Filter counts double across blocks: $32\to64\to128$.
+The classifier head is Linear($2048\to512$)--ReLU--Dropout(0.5)--Linear($512\to11$).
+The network is trained from random initialisation using Adam
+($\text{lr}=10^{-3}$, weight decay $10^{-4}$, batch size 128) with
+ReduceLROnPlateau (patience 3, factor 0.5) and early stopping (patience 7).
+
+\paragraph{VGG16 fine-tuning.}
+VGG16~\cite{simonyan2015vgg} is loaded with ImageNet weights.
+The final fully-connected layer is replaced with Linear($4096\to11$).
+All layers are unfrozen; the convolutional backbone uses a learning rate
+ten times smaller than the classifier head ($10^{-5}$ vs.\ $10^{-4}$) to
+preserve pretrained features while allowing domain adaptation.
+Batch size is 64 to accommodate GPU memory.
+
+\paragraph{Data augmentation.}
+Training crops are augmented with ColorJitter (brightness/contrast $\pm0.3$,
+saturation $\pm0.2$) and RandomAffine (rotation $\pm15^\circ$, translation
+$\pm10\%$, scale $[0.9, 1.1]$) to improve robustness to the pose and
+lighting variations expected at test time.
+Validation and test sets use no augmentation.
+
+\subsection{Post-processing}
+
+After classification, proposals with confidence below 0.85 or predicted as
+background are removed.
+Per-class NMS with IoU threshold 0.3 suppresses duplicate detections of the
+same digit.
+Running NMS per class prevents a high-confidence ``4'' from suppressing a
+nearby ``2''.
+Surviving detections are sorted by their left-edge $x$-coordinate to
+assemble the digit sequence left-to-right.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Experiments}
+% ─────────────────────────────────────────────────────────────────────────────
+
+\subsection{Dataset and Evaluation}
+
+SVHN Format~1 provides full street-view images with per-digit bounding
+boxes stored in \texttt{digitStruct.mat}.
+Each bounding box is cropped and resized to $32\times32$.
+The training set (73,257 crops) is split 95/5 into train and validation
+subsets; the test set contains 26,032 digit crops.
+With \texttt{bg\_ratio}$=1.0$, an equal number of synthetic background
+crops are added, yielding 52,064 total test samples (26,032 digits +
+26,032 background).
+Pixel values are normalised using SVHN channel statistics
+($\mu=[0.4377, 0.4438, 0.4728]$, $\sigma=[0.198, 0.201, 0.197]$).
+
+The SVHN test set exhibits significant class imbalance: digit~1 is the
+most frequent class ($\approx$3$\times$ more samples than digit~9), and
+the majority of images contain 2-digit sequences (8,356 of 13,068 images).
+
+\begin{figure}[H]
+  \centering
+  \begin{subfigure}[b]{0.48\linewidth}
+    \includegraphics[width=\linewidth]{report_figures/exploratory/eda_class_distribution.png}
+    \caption{Per-digit class distribution}
+  \end{subfigure}
+  \hfill
+  \begin{subfigure}[b]{0.48\linewidth}
+    \includegraphics[width=\linewidth]{report_figures/exploratory/eda_sequence_length.png}
+    \caption{Sequence length distribution}
+  \end{subfigure}
+  \caption{SVHN dataset statistics. Digit~1 dominates both splits;
+           2-digit sequences are most common.}
+  \label{fig:eda}
+\end{figure}
+
+\subsection{Training Curves}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{report_figures/comparison/comparison_loss.png}
+  \caption{Train and validation cross-entropy loss for both models.
+           VGG16 converges faster due to pretrained initialisation.}
+  \label{fig:loss}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{report_figures/comparison/comparison_accuracy.png}
+  \caption{Train and validation accuracy. CustomCNN requires more epochs
+           to reach comparable accuracy.}
+  \label{fig:acc}
+\end{figure}
+
+Figure~\ref{fig:loss} shows that VGG16 achieves low validation loss by
+epoch~5, whereas CustomCNN requires approximately 20 epochs to reach a
+similar regime.
+The learning rate schedule for CustomCNN decays from $10^{-3}$ to
+$5\times10^{-4}$ after epoch~24 (one plateau reduction), while VGG16
+decays from $10^{-4}$ to $5\times10^{-5}$ after epoch~14.
+Both models show a small but consistent generalisation gap (train accuracy
+exceeds validation accuracy by $\approx$0.5--1.5 percentage points),
+indicating mild overfitting that is well-controlled by dropout and weight
+decay.
+
+\subsection{Crop-Level Classification Results}
+
+\begin{table}[H]
+  \centering
+  \caption{Crop-level test set performance (52,064 samples: 26,032 digit
+           crops + 26,032 synthetic background crops).}
+  \label{tab:results}
+  \begin{tabular}{lccc}
+    \toprule
+    Model & Train Acc & Val Acc & Test Acc \\
+    \midrule
+    CustomCNN   & 97.99\% & 98.45\% & 96.06\% \\
+    VGG16       & 98.93\% & 98.69\% & \textbf{97.02\%} \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Table~\ref{tab:results} shows that VGG16 outperforms CustomCNN by
+0.96 percentage points on the test set.
+The pretrained backbone provides a stronger initialisation and converges
+in fewer epochs (20 vs.\ 30), confirming the benefit of transfer learning
+even for a relatively simple $32\times32$ classification task.
+
+\begin{table}[H]
+  \centering
+  \caption{Per-class precision / recall / F1 on the test set.}
+  \label{tab:perclass}
+  \resizebox{\linewidth}{!}{%
+  \begin{tabular}{l ccc ccc}
+    \toprule
+    & \multicolumn{3}{c}{CustomCNN} & \multicolumn{3}{c}{VGG16} \\
+    \cmidrule(lr){2-4} \cmidrule(lr){5-7}
+    Class & Prec & Rec & F1 & Prec & Rec & F1 \\
+    \midrule
+    0  & 0.88 & 0.97 & 0.92 & 0.92 & 0.97 & 0.94 \\
+    1  & 0.91 & 0.94 & 0.93 & 0.92 & 0.96 & 0.94 \\
+    2  & 0.97 & 0.97 & 0.97 & 0.97 & 0.97 & 0.97 \\
+    3  & 0.94 & 0.95 & 0.94 & 0.96 & 0.94 & 0.95 \\
+    4  & 0.91 & 0.97 & 0.94 & 0.96 & 0.98 & 0.97 \\
+    5  & 0.94 & 0.96 & 0.95 & 0.95 & 0.97 & 0.96 \\
+    6  & 0.94 & 0.96 & 0.95 & 0.95 & 0.97 & 0.96 \\
+    7  & 0.90 & 0.95 & 0.93 & 0.95 & 0.94 & 0.95 \\
+    8  & 0.91 & 0.96 & 0.94 & 0.92 & 0.97 & 0.94 \\
+    9  & 0.92 & 0.97 & 0.94 & 0.93 & 0.97 & 0.95 \\
+    bg & 1.00 & 0.96 & 0.98 & 1.00 & 0.97 & 0.99 \\
+    \bottomrule
+  \end{tabular}}
+\end{table}
+
+Table~\ref{tab:perclass} shows that VGG16 improves precision across
+nearly all digit classes compared to CustomCNN.
+Digit~0 has the lowest precision for CustomCNN (0.88), likely because the
+circular stroke of ``0'' resembles ``6'' and ``8'' in small, noisy crops.
+The background class achieves precision 1.00 for both models, confirming
+that the synthetic background training data is effective.
+
+\begin{figure}[H]
+  \centering
+  \begin{subfigure}[b]{0.48\linewidth}
+    \includegraphics[width=\linewidth]{results/vgg16_confusion_matrix.png}
+    \caption{VGG16}
+  \end{subfigure}
+  \hfill
+  \begin{subfigure}[b]{0.48\linewidth}
+    \includegraphics[width=\linewidth]{results/custom_confusion_matrix.png}
+    \caption{CustomCNN}
+  \end{subfigure}
+  \caption{Confusion matrices on the test set. Both models most frequently
+           confuse visually similar digit pairs (0/6, 7/1, 3/8).}
+  \label{fig:cm}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{report_figures/comparison/comparison_bar.png}
+  \caption{Train, validation, and test accuracy comparison.}
+  \label{fig:bar}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \begin{subfigure}[b]{0.48\linewidth}
+    \includegraphics[width=\linewidth]{results/custom_per_class_accuracy.png}
+    \caption{CustomCNN}
+  \end{subfigure}
+  \hfill
+  \begin{subfigure}[b]{0.48\linewidth}
+    \includegraphics[width=\linewidth]{results/vgg16_per_class_accuracy.png}
+    \caption{VGG16}
+  \end{subfigure}
+  \caption{Per-class accuracy on the test set. VGG16 is more uniform
+           across classes; CustomCNN shows a larger spread.}
+  \label{fig:perclass_acc}
+\end{figure}
+
+\subsection{Region Proposal Evaluation}
+
+Before evaluating end-to-end sequence accuracy, we assess the quality of
+the region proposal stage in isolation.
+A ground-truth bounding box is considered ``hit'' if any proposal overlaps
+it with IoU $\geq 0.3$.
+An image has ``full coverage'' if every GT box in that image is hit.
+
+\begin{table}[H]
+  \centering
+  \caption{Region proposal quality on the SVHN test set (13,068 images,
+           26,032 GT boxes, 809,812 proposals).}
+  \label{tab:proposals}
+  \begin{tabular}{lc}
+    \toprule
+    Metric & Value \\
+    \midrule
+    Recall (GT boxes hit)       & 93.67\% \\
+    Precision (proposals useful) & 15.07\% \\
+    Full coverage (all GT hit)  & 89.56\% \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{report_figures/comparison/proposal_hit_rate.png}
+  \caption{Proposal recall, precision, and full-coverage rate broken down
+           by ground-truth sequence length. Recall remains above 89\% for
+           all lengths, but full coverage drops for longer sequences.}
+  \label{fig:proposal_hit}
+\end{figure}
+
+Table~\ref{tab:proposals} shows that MSER achieves 93.67\% recall,
+meaning the vast majority of digits receive at least one overlapping
+proposal.
+However, precision is only 15.07\%---most proposals cover background
+regions---which places a heavy burden on the classifier to reject
+non-digit crops.
+Full coverage drops from 97.0\% for 1-digit images to 77.4\% for 4-digit
+images (Figure~\ref{fig:proposal_hit}), explaining much of the
+sequence-level accuracy degradation for longer sequences.
+
+\subsection{Sequence-Level Evaluation}
+
+The ultimate metric for this pipeline is sequence-level accuracy: the
+predicted digit string must exactly match the ground-truth string for an
+image to be counted as correct.
+
+\begin{table}[H]
+  \centering
+  \caption{Sequence-level accuracy on the SVHN test set (13,068 images).}
+  \label{tab:seq}
+  \begin{tabular}{lcccc}
+    \toprule
+    Model & Correct & Wrong digits & Wrong length & No detection \\
+    \midrule
+    CustomCNN & \textbf{44.08\%} & 9.67\% & 43.85\% & 2.39\% \\
+    VGG16     & 43.14\% & 9.93\% & 44.86\% & 2.07\% \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{report_figures/comparison/comparison_seq_accuracy.png}
+  \caption{Sequence-level accuracy and error breakdown. ``Wrong length''
+           dominates errors for both models.}
+  \label{fig:seq_acc}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{report_figures/comparison/comparison_seq_by_length.png}
+  \caption{Sequence accuracy vs.\ ground-truth sequence length. Accuracy
+           drops sharply for sequences of 3+ digits.}
+  \label{fig:seq_len}
+\end{figure}
+
+Table~\ref{tab:seq} reveals that wrong-length predictions account for
+$\approx$44\% of all test images---the dominant failure mode.
+This occurs when the proposal stage either misses a digit entirely (under-
+detection) or generates spurious detections that survive NMS (over-detection).
+Only $\approx$10\% of errors are wrong-digit errors (correct length but
+incorrect digit identity), confirming that the classifier is accurate when
+it receives a good crop.
+
+Interestingly, CustomCNN achieves slightly higher sequence accuracy
+(44.08\%) than VGG16 (43.14\%) despite lower crop-level test accuracy
+(96.06\% vs.\ 97.02\%).
+This suggests that CustomCNN's confidence calibration interacts more
+favourably with the fixed confidence threshold (0.85) and NMS pipeline,
+producing fewer spurious detections.
+
+Figure~\ref{fig:seq_len} shows that accuracy degrades sharply with
+sequence length: 62.4\% for 1-digit sequences, 44.6\% for 2-digit, 23.1\%
+for 3-digit, and only 3.4\% for 4-digit sequences.
+This is consistent with the proposal full-coverage drop-off
+(Figure~\ref{fig:proposal_hit}): missing even one digit in a multi-digit
+sequence causes a wrong-length error.
+
+\subsection{Detection Results}
+
+\begin{figure}[H]
+  \centering
+  \begin{subfigure}[b]{0.48\linewidth}
+    \includegraphics[width=\linewidth]{graded_images/vgg16/1.png}
+    \caption{Scale invariance}
+  \end{subfigure}
+  \hfill
+  \begin{subfigure}[b]{0.48\linewidth}
+    \includegraphics[width=\linewidth]{graded_images/vgg16/2.png}
+    \caption{Orientation ($30^\circ$)}
+  \end{subfigure}
+  \vspace{4pt}
+  \begin{subfigure}[b]{0.48\linewidth}
+    \includegraphics[width=\linewidth]{graded_images/vgg16/3.png}
+    \caption{Corner location}
+  \end{subfigure}
+  \hfill
+  \begin{subfigure}[b]{0.48\linewidth}
+    \includegraphics[width=\linewidth]{graded_images/vgg16/4.png}
+    \caption{Low lighting}
+  \end{subfigure}
+  \vspace{4pt}
+  \begin{subfigure}[b]{0.48\linewidth}
+    \includegraphics[width=\linewidth]{graded_images/vgg16/5.png}
+    \caption{Gaussian noise}
+  \end{subfigure}
+  \caption{VGG16 detection results on the five graded demo images.
+           Green boxes show accepted detections with confidence scores.}
+  \label{fig:detections}
+\end{figure}
+
+\paragraph{Positive results.}
+The pipeline correctly detects digits at multiple scales (Figure~\ref{fig:detections}a)
+because the image pyramid ensures that small digits become full-sized
+proposals at lower pyramid levels.
+CLAHE normalisation enables detection under low-light conditions
+(Figure~\ref{fig:detections}d) by adaptively boosting local contrast before
+region proposal.
+The Gaussian blur pre-processing step suppresses noise artefacts
+(Figure~\ref{fig:detections}e) that would otherwise generate spurious MSER
+regions.
+
+\paragraph{Negative results and failure analysis.}
+Rotated digits (Figure~\ref{fig:detections}b) present the most significant
+challenge.
+The sliding window always proposes axis-aligned boxes, so a digit rotated
+by $30^\circ$ may be cropped with substantial background padding, reducing
+the effective digit area in the $32\times32$ input.
+Training augmentation covers $\pm15^\circ$, but larger rotations fall
+outside the training distribution.
+
+Digits placed in extreme corners (Figure~\ref{fig:detections}c) can be
+partially missed if the sliding window step size causes the window to
+straddle the image boundary, producing a crop that is mostly background.
+
+The sequence-level results (Section~4.5) confirm that the dominant failure
+mode is wrong-length prediction ($\approx$44\% of images), driven by the
+proposal stage rather than the classifier.
+Per-class NMS with IoU threshold 0.3 may suppress one detection when two
+digits are very close together and their bounding boxes overlap
+significantly.
+This is an inherent limitation of the two-stage approach; end-to-end
+detectors such as Faster R-CNN~\cite{ren2015fasterrcnn} handle this more
+gracefully through anchor regression.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Conclusion}
+% ─────────────────────────────────────────────────────────────────────────────
+
+This project implemented a complete digit detection and recognition system
+combining classical region proposal (MSER + sliding-window pyramid) with
+deep CNN classification.
+Two models were trained on SVHN: a custom CNN from scratch achieving
+96.06\% crop-level test accuracy, and a fine-tuned VGG16 achieving 97.02\%.
+The 11-class formulation with a synthetic background class enables explicit
+rejection of non-digit proposals, reducing false positives compared to
+confidence-threshold-only filtering.
+
+VGG16 converges faster and achieves higher crop-level accuracy, confirming
+the benefit of transfer learning from ImageNet.
+However, at the sequence level both models achieve similar accuracy
+($\approx$44\%), with CustomCNN marginally outperforming VGG16 (44.08\%
+vs.\ 43.14\%).
+The dominant failure mode is wrong-length prediction caused by missed or
+spurious region proposals, not misclassification of individual digits.
+
+The primary bottleneck is the region proposal stage: while MSER achieves
+93.67\% per-box recall, full-coverage drops to 77\% for 4-digit sequences,
+directly limiting sequence accuracy.
+Future work could replace the hand-crafted proposal stage with a learned
+region proposal network, incorporate rotation-invariant features, or adopt
+an end-to-end detector to address these limitations.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\bibliographystyle{plainnat}
+\bibliography{references}
+
+\end{document}

@@ -1,0 +1,30 @@
+{
+  "description": "Distribution of number of digits per image",
+  "splits": {
+    "train": {
+      "mean": 2.193,
+      "median": 2.0,
+      "max": 6,
+      "counts": {
+        "1": 5137,
+        "2": 18130,
+        "3": 8691,
+        "4": 1434,
+        "5": 9,
+        "6": 1
+      }
+    },
+    "test": {
+      "mean": 1.992,
+      "median": 2.0,
+      "max": 5,
+      "counts": {
+        "1": 2483,
+        "2": 8356,
+        "3": 2081,
+        "4": 146,
+        "5": 2
+      }
+    }
+  }
+}

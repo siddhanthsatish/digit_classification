@@ -1,0 +1,16 @@
+{
+  "description": "Full pipeline visualisation for 1 correct and 1 wrong image",
+  "model": "custom",
+  "correct": {
+    "filename": "100.png",
+    "gt": "61",
+    "pred": "61",
+    "correct": true
+  },
+  "wrong": {
+    "filename": "10.png",
+    "gt": "16",
+    "pred": "1161",
+    "correct": false
+  }
+}

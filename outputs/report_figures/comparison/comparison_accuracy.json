@@ -1,0 +1,15 @@
+{
+  "description": "Train and val accuracy curves for each model",
+  "models": {
+    "custom": {
+      "train_acc_final": 97.99,
+      "val_acc_final": 98.42,
+      "epochs": 30
+    },
+    "vgg16": {
+      "train_acc_final": 98.93,
+      "val_acc_final": 98.69,
+      "epochs": 20
+    }
+  }
+}

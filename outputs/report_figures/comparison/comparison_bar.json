@@ -1,0 +1,15 @@
+{
+  "description": "Train / val / test accuracy bar chart per model",
+  "models": {
+    "custom": {
+      "train_acc": 97.99,
+      "val_acc": 98.42,
+      "test_acc": 96.06
+    },
+    "vgg16": {
+      "train_acc": 98.93,
+      "val_acc": 98.69,
+      "test_acc": 97.02
+    }
+  }
+}

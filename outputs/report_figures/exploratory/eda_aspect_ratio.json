@@ -1,0 +1,21 @@
+{
+  "description": "Bounding box aspect ratio (h/w) distribution; mser thresholds overlaid",
+  "mser_min_aspect": 0.2,
+  "mser_max_aspect": 5.0,
+  "splits": {
+    "train": {
+      "mean": 2.216,
+      "median": 2.067,
+      "p5": 1.4,
+      "p95": 3.556,
+      "pct_within_mser_bounds": 99.44
+    },
+    "test": {
+      "mean": 1.911,
+      "median": 1.793,
+      "p5": 1.258,
+      "p95": 3.0,
+      "pct_within_mser_bounds": 99.83
+    }
+  }
+}

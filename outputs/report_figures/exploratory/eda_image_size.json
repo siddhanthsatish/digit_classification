@@ -1,0 +1,34 @@
+{
+  "description": "Full scene image dimensions sampled from each split (n=3000)",
+  "sample_size": 3000,
+  "splits": {
+    "train": {
+      "width": {
+        "mean": 128.0,
+        "median": 102.0,
+        "min": 27,
+        "max": 876
+      },
+      "height": {
+        "mean": 57.2,
+        "median": 47.0,
+        "min": 12,
+        "max": 501
+      }
+    },
+    "test": {
+      "width": {
+        "mean": 171.9,
+        "median": 130.5,
+        "min": 33,
+        "max": 1083
+      },
+      "height": {
+        "mean": 71.0,
+        "median": 52.0,
+        "min": 13,
+        "max": 467
+      }
+    }
+  }
+}

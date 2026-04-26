@@ -1,0 +1,21 @@
+{
+  "description": "Sequence-level accuracy comparison and error breakdown",
+  "models": {
+    "custom": {
+      "accuracy_pct": 44.08,
+      "correct": 5761,
+      "wrong_digits": 1264,
+      "wrong_length": 5731,
+      "no_detection": 312,
+      "total": 13068
+    },
+    "vgg16": {
+      "accuracy_pct": 43.14,
+      "correct": 5638,
+      "wrong_digits": 1298,
+      "wrong_length": 5862,
+      "no_detection": 270,
+      "total": 13068
+    }
+  }
+}
