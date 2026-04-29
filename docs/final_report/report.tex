@@ -149,9 +149,9 @@ Near-duplicate proposals (IoU $> 0.8$) are removed before classification.
 \paragraph{11-class formulation.}
 Both models output 11 classes: digits 0--9 (indices 0--9) and a background
 class (index 10).
-The background class is trained on synthetic crops: between-digit patches
-sampled from SVHN scene images (50\%), random noise patches (25\%), and
-linear gradient patches (25\%).
+The background class is trained on hard-negative crops mined from SVHN
+scene images: MSER proposals that do not overlap any ground-truth digit
+bounding box are saved as background samples.
 The ratio of background to digit samples is controlled by
 \texttt{bg\_ratio}$=1.0$ in \texttt{config.json}, producing a balanced
 dataset with one background crop per digit crop.
@@ -249,7 +249,7 @@ boxes stored in \texttt{digitStruct.mat}.
 Each bounding box is cropped and resized to $32\times32$.
 The training set (73,257 crops) is split 95/5 into train and validation
 subsets; the test set contains 26,032 digit crops.
-With \texttt{bg\_ratio}$=1.0$, an equal number of synthetic background
+With \texttt{bg\_ratio}$=1.0$, an equal number of hard-negative background
 crops are added, yielding 52,064 total test samples (26,032 digits +
 26,032 background).
 Pixel values are normalised using SVHN channel statistics
@@ -309,7 +309,7 @@ decay.
 \begin{table}[H]
   \centering
   \caption{Crop-level test set performance (52,064 samples: 26,032 digit
-           crops + 26,032 synthetic background crops).}
+           crops + 26,032 hard-negative background crops).}
   \label{tab:results}
   \begin{tabular}{lccc}
     \toprule
@@ -358,7 +358,7 @@ nearly all digit classes compared to CustomCNN.
 Digit~0 has the lowest precision for CustomCNN (0.88), likely because the
 circular stroke of ``0'' resembles ``6'' and ``8'' in small, noisy crops.
 The background class achieves precision 1.00 for both models, confirming
-that the synthetic background training data is effective.
+that the hard-negative background training data is effective.
 
 \begin{figure}[H]
   \centering
@@ -616,7 +616,7 @@ Digits placed in extreme corners (Figure~\ref{fig:detections}c) can be
 partially missed if the MSER region falls partially outside the image
 boundary, producing a crop that is mostly background.
 
-The sequence-level results (Section~4.7) confirm that the dominant failure
+The sequence-level results (Section~4.6) confirm that the dominant failure
 mode is wrong-length prediction ($\approx$44\% of images), driven by the
 proposal stage rather than the classifier.
 Per-class NMS with IoU threshold 0.3 may suppress one detection when two
@@ -635,7 +635,7 @@ combining classical region proposal (MSER + sliding-window pyramid) with
 deep CNN classification.
 Two models were trained on SVHN: a custom CNN from scratch achieving
 96.06\% crop-level test accuracy, and a fine-tuned VGG16 achieving 97.02\%.
-The 11-class formulation with a synthetic background class enables explicit
+The 11-class formulation with a hard-negative background class enables explicit
 rejection of non-digit proposals, reducing false positives compared to
 confidence-threshold-only filtering.
 
