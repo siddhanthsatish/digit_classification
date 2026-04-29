@@ -190,12 +190,57 @@ Per-class NMS with IoU threshold 0.3 suppresses duplicate detections of the
 same digit.
 Running NMS per class prevents a high-confidence ``4'' from suppressing a
 nearby ``2''.
+
+\paragraph{DBSCAN spatial clustering.}
+After per-class NMS, a cross-class overlap filter removes boxes that are
+encompassed by or heavily overlap ($>$50\% area) with a higher-confidence
+detection.
+The surviving pre-NMS digit hits (all proposals classified as a digit with
+confidence above threshold) are then clustered in 2-D $(c_x, c_y)$ space
+using DBSCAN~\cite{ester1996dbscan} with $\varepsilon$ set to 1.5$\times$
+the median proposal width and \texttt{min\_samples}$=2$.
+Only clusters whose hit count exceeds 50\% of the dominant cluster's count
+are retained; final detections whose centres fall outside every surviving
+cluster are discarded.
+This step removes isolated spurious detections (e.g.\ a confident ``1''
+fired on a lamp post far from the actual house number) without requiring a
+hand-tuned spatial prior.
+
 Surviving detections are sorted by their left-edge $x$-coordinate to
 assemble the digit sequence left-to-right.
 
 % ─────────────────────────────────────────────────────────────────────────────
 \section{Experiments}
 % ─────────────────────────────────────────────────────────────────────────────
+
+\subsection{Computational Cost}
+
+Table~\ref{tab:cost} summarises the model sizes and training effort.
+CustomCNN is $100\times$ smaller than VGG16 in parameter count, yet
+achieves competitive crop-level accuracy, making it attractive for
+resource-constrained deployment.
+VGG16 converges in fewer epochs (best validation loss at epoch~19 vs.\
+epoch~29 for CustomCNN) thanks to its pretrained initialisation, but each
+epoch is more expensive due to the larger model.
+Both models were trained on a single NVIDIA GPU with mixed-precision
+(\texttt{torch.amp}) and \texttt{torch.compile} for fused kernels.
+
+\begin{table}[H]
+  \centering
+  \caption{Model size and training summary.}
+  \label{tab:cost}
+  \begin{tabular}{lcc}
+    \toprule
+    & CustomCNN & VGG16 \\
+    \midrule
+    Parameters          & 1.34\,M   & 134.31\,M \\
+    Max epochs          & 30        & 20        \\
+    Best-ckpt epoch     & 29        & 19        \\
+    LR reductions       & 1         & 1         \\
+    Batch size (GPU)    & 1024      & 256       \\
+    \bottomrule
+  \end{tabular}
+\end{table}
 
 \subsection{Dataset and Evaluation}
 
@@ -455,51 +500,110 @@ This is consistent with the proposal full-coverage drop-off
 (Figure~\ref{fig:proposal_hit}): missing even one digit in a multi-digit
 sequence causes a wrong-length error.
 
+\subsection{Design Justification}
+
+The final configuration was chosen through iterative experimentation.
+Table~\ref{tab:design} summarises the key design decisions and their
+rationale.
+
+\begin{table}[H]
+  \centering
+  \caption{Key hyperparameter and design choices with justification.}
+  \label{tab:design}
+  \resizebox{\linewidth}{!}{%
+  \begin{tabular}{lll}
+    \toprule
+    Parameter & Value & Rationale \\
+    \midrule
+    \texttt{conf\_threshold} & 0.85
+      & Balances precision and recall: lower values (0.5--0.7) \\
+      & & produced many false positives; higher values ($>$0.9) \\
+      & & missed low-contrast digits. \\
+    \texttt{nms\_iou} & 0.3
+      & Aggressive suppression prevents duplicate detections \\
+      & & of the same digit; 0.5 left too many overlapping boxes. \\
+    \texttt{bg\_ratio} & 1.0
+      & Equal digit-to-background ratio. Lower ratios (0.5) \\
+      & & caused more false positives; higher ratios (2.0) biased \\
+      & & the model toward predicting background. \\
+    \texttt{dropout\_conv/fc} & 0.25 / 0.5
+      & Standard regularisation schedule; the generalisation gap \\
+      & & stays below 1.5\,pp across all epochs (Fig.~\ref{fig:acc}). \\
+    Backbone LR scale & 0.1$\times$
+      & Prevents catastrophic forgetting of ImageNet features \\
+      & & while still allowing domain adaptation. \\
+    MSER only & \texttt{use\_sliding=false}
+      & Sliding window generates $>$10$\times$ more proposals \\
+      & & with marginal recall gain; MSER alone achieves 93.7\% \\
+      & & recall at 62$\times$ fewer proposals. \\
+    DBSCAN $\varepsilon$ & $1.5\times$ median width
+      & Adapts to digit scale in each image; fixed-pixel thresholds \\
+      & & failed on images with varying digit sizes. \\
+    \texttt{filters} & [32, 64, 128]
+      & Doubling pattern balances capacity and overfitting risk; \\
+      & & [64, 128, 256] overfit on the 32$\times$32 input size. \\
+    \bottomrule
+  \end{tabular}}
+\end{table}
+
 \subsection{Detection Results}
 
-\begin{figure}[H]
+\begin{figure*}[t]
   \centering
-  \begin{subfigure}[b]{0.48\linewidth}
+  \begin{subfigure}[b]{0.19\textwidth}
+    \includegraphics[width=\linewidth]{graded_images/custom/1.png}
+  \end{subfigure}\hfill
+  \begin{subfigure}[b]{0.19\textwidth}
+    \includegraphics[width=\linewidth]{graded_images/custom/2.png}
+  \end{subfigure}\hfill
+  \begin{subfigure}[b]{0.19\textwidth}
+    \includegraphics[width=\linewidth]{graded_images/custom/3.png}
+  \end{subfigure}\hfill
+  \begin{subfigure}[b]{0.19\textwidth}
+    \includegraphics[width=\linewidth]{graded_images/custom/4.png}
+  \end{subfigure}\hfill
+  \begin{subfigure}[b]{0.19\textwidth}
+    \includegraphics[width=\linewidth]{graded_images/custom/5.png}
+  \end{subfigure}
+  \vspace{2pt}
+  \begin{subfigure}[b]{0.19\textwidth}
     \includegraphics[width=\linewidth]{graded_images/vgg16/1.png}
-    \caption{Scale invariance}
-  \end{subfigure}
-  \hfill
-  \begin{subfigure}[b]{0.48\linewidth}
+    \caption{Scale}
+  \end{subfigure}\hfill
+  \begin{subfigure}[b]{0.19\textwidth}
     \includegraphics[width=\linewidth]{graded_images/vgg16/2.png}
-    \caption{Orientation ($30^\circ$)}
-  \end{subfigure}
-  \vspace{4pt}
-  \begin{subfigure}[b]{0.48\linewidth}
+    \caption{Rotation}
+  \end{subfigure}\hfill
+  \begin{subfigure}[b]{0.19\textwidth}
     \includegraphics[width=\linewidth]{graded_images/vgg16/3.png}
-    \caption{Corner location}
-  \end{subfigure}
-  \hfill
-  \begin{subfigure}[b]{0.48\linewidth}
+    \caption{Corner}
+  \end{subfigure}\hfill
+  \begin{subfigure}[b]{0.19\textwidth}
     \includegraphics[width=\linewidth]{graded_images/vgg16/4.png}
-    \caption{Low lighting}
-  \end{subfigure}
-  \vspace{4pt}
-  \begin{subfigure}[b]{0.48\linewidth}
+    \caption{Low light}
+  \end{subfigure}\hfill
+  \begin{subfigure}[b]{0.19\textwidth}
     \includegraphics[width=\linewidth]{graded_images/vgg16/5.png}
-    \caption{Gaussian noise}
+    \caption{Noise}
   \end{subfigure}
-  \caption{VGG16 detection results on the five graded demo images.
+  \caption{Detection results on the five graded demo images.
+           Top row: CustomCNN. Bottom row: VGG16.
            Green boxes show accepted detections with confidence scores.}
   \label{fig:detections}
-\end{figure}
+\end{figure*}
 
 \paragraph{Positive results.}
-The pipeline correctly detects digits at multiple scales (Figure~\ref{fig:detections}a)
-because the image pyramid ensures that small digits become full-sized
-proposals at lower pyramid levels.
+Both models correctly detect digits at multiple scales
+(Figure~\ref{fig:detections}a) because the image pyramid ensures that
+small digits become full-sized proposals at lower pyramid levels.
 CLAHE normalisation enables detection under low-light conditions
-(Figure~\ref{fig:detections}d) by adaptively boosting local contrast before
-region proposal.
+(Figure~\ref{fig:detections}d) by adaptively boosting local contrast
+before region proposal.
 The Gaussian blur pre-processing step suppresses noise artefacts
-(Figure~\ref{fig:detections}e) that would otherwise generate spurious MSER
-regions.
+(Figure~\ref{fig:detections}e) that would otherwise generate spurious
+MSER regions.
 
-\paragraph{Negative results and failure analysis.}
+\paragraph{Failure analysis.}
 Rotated digits (Figure~\ref{fig:detections}b) present the most significant
 challenge.
 The sliding window always proposes axis-aligned boxes, so a digit rotated
@@ -509,10 +613,10 @@ Training augmentation covers $\pm15^\circ$, but larger rotations fall
 outside the training distribution.
 
 Digits placed in extreme corners (Figure~\ref{fig:detections}c) can be
-partially missed if the sliding window step size causes the window to
-straddle the image boundary, producing a crop that is mostly background.
+partially missed if the MSER region falls partially outside the image
+boundary, producing a crop that is mostly background.
 
-The sequence-level results (Section~4.5) confirm that the dominant failure
+The sequence-level results (Section~4.7) confirm that the dominant failure
 mode is wrong-length prediction ($\approx$44\% of images), driven by the
 proposal stage rather than the classifier.
 Per-class NMS with IoU threshold 0.3 may suppress one detection when two
