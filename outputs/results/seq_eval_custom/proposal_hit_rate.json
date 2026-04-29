@@ -1,0 +1,33 @@
+{
+  "iou_threshold": 0.3,
+  "total_gt_digits": 26032,
+  "hits": 24385,
+  "hit_rate": 0.9367,
+  "by_seq_len": {
+    "1": {
+      "hits": 2409,
+      "total": 2483,
+      "rate": 0.9702
+    },
+    "2": {
+      "hits": 15823,
+      "total": 16712,
+      "rate": 0.9468
+    },
+    "3": {
+      "hits": 5613,
+      "total": 6243,
+      "rate": 0.8991
+    },
+    "4": {
+      "hits": 533,
+      "total": 584,
+      "rate": 0.9127
+    },
+    "5": {
+      "hits": 7,
+      "total": 10,
+      "rate": 0.7
+    }
+  }
+}

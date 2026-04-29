@@ -1,0 +1,46 @@
+{
+  "model": "vgg16",
+  "num_classes": 11,
+  "model_cfg": {
+    "epochs": 20,
+    "batch_size": 256,
+    "lr": 0.0001,
+    "backbone_lr_scale": 0.1,
+    "weight_decay": 0.0001,
+    "patience": 7,
+    "scheduler_patience": 3,
+    "scheduler_factor": 0.5,
+    "freeze_features": false
+  },
+  "dataset_cfg": {
+    "val_split": 0.05,
+    "seed": 42,
+    "num_workers": 8,
+    "image_size": 32,
+    "mean": [
+      0.4377,
+      0.4438,
+      0.4728
+    ],
+    "std": [
+      0.198,
+      0.201,
+      0.197
+    ],
+    "bg_ratio": 1.0,
+    "bg_iou_threshold": 0.3,
+    "bg_max_per_image": 10,
+    "augment_degrees": 15,
+    "augment_translate": [
+      0.1,
+      0.1
+    ],
+    "augment_scale": [
+      0.9,
+      1.1
+    ],
+    "color_jitter_brightness": 0.3,
+    "color_jitter_contrast": 0.3,
+    "color_jitter_saturation": 0.2
+  }
+}
